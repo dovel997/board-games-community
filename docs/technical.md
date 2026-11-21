@@ -8,8 +8,10 @@
 | Area | Choice | Status |
 |------|--------|--------|
 | Frontend | React | **Decided** |
-| Frontend language / build | TypeScript + Vite | _Proposed_ |
-| Frontend routing / data | React Router, TanStack Query | _Proposed_ |
+| Frontend language / build | TypeScript + Vite | **Decided** |
+| Frontend UI / routing | Mantine, React Router | **Decided** |
+| Frontend server state | TanStack Query | _Proposed_ |
+| Frontend hosting | Cloudflare Pages (free), deployed by GitHub Actions | **Decided** |
 | Backend | ASP.NET Core 8 Web API (C#) | **Decided** |
 | Data access | Entity Framework Core 8 + Npgsql (queries only, no EF migrations) | _Proposed_ |
 | Database | PostgreSQL | **Decided** |
@@ -32,21 +34,20 @@
 ├── frontend/   React app (Vite)
 ├── backend/    ASP.NET Core 8 solution (API, domain, tests)
 ├── database/   Flyway SQL migrations, schema snapshot, seed data, local Postgres, backup scripts
-├── docs/       features.md, technical.md
+├── docs/       features.md, technical.md, cloudflare-deployment.md
 └── .github/    GitHub Actions workflows, Dependabot, templates
 ```
 
 ## 3. Architecture
 
 ```
-Browser ──HTTPS──► nginx (VPS)
-                    ├── /         → static React build (frontend/dist)
-                    └── /api/     → ASP.NET Core API (Kestrel, localhost:5000)
-                                        └── PostgreSQL (localhost:5432, not public)
+Browser ──► example.com      → Cloudflare Pages (static React build)
+        └─► api.example.com  → Cloudflare proxy → VPS: nginx → ASP.NET Core API (Kestrel, localhost:5000)
+                                                                └── PostgreSQL (localhost:5432, not public)
 ```
 
-- The frontend talks to the backend only through `/api/v1/...`.
-- Frontend and API are served from the **same origin**, so no CORS is needed in production.
+- The frontend talks to the backend only through `https://api.example.com/api/v1/...`.
+- Frontend and API are on different origins but the **same site**, so the API needs CORS for the frontend origin (with credentials), and the `SameSite=Strict` refresh cookie still works.
 - Only the backend connects to the database. PostgreSQL is never exposed to the internet.
 
 ## 4. Frontend
@@ -55,8 +56,9 @@ Browser ──HTTPS──► nginx (VPS)
 - Feature-based folders (`src/features/<feature>/`), shared UI in `src/components/`.
 - API calls go through one typed client module; server state via TanStack Query.
 - In development, Vite proxies `/api` to the local backend.
-- Lint/format: ESLint + Prettier. Tests: Vitest + React Testing Library.
-- Production build is static files in `frontend/dist`, served by nginx.
+- UI: Mantine. Routing: React Router.
+- Lint: oxlint. Tests: Vitest + React Testing Library.
+- Production build is static files in `frontend/dist`, hosted on Cloudflare Pages — see [cloudflare-deployment.md](cloudflare-deployment.md).
 
 ## 5. Backend
 
@@ -148,20 +150,21 @@ database/
 
 | Workflow | Trigger | Does |
 |----------|---------|------|
-| `frontend-ci.yml` | PR / push touching `frontend/**` | install, lint, test, build |
+| `frontend-deploy.yml` | PR / push touching `frontend/**` | install, lint, test, build, deploy to Cloudflare Pages (preview on PRs, production on `main`) |
 | `backend-ci.yml` | PR / push touching `backend/**` | restore, build, test |
 | `database-ci.yml` | PR / push touching `database/**` | spin up Postgres service, `flyway migrate` + `validate` on an empty DB |
-| `deploy.yml` | push to `main` (or manual) | build, run migrations, deploy to VPS |
+| `deploy.yml` | push to `main` (or manual) | build backend, run migrations, deploy to VPS |
 
-### Deployment flow
+### Backend deployment flow
 
-1. Build the frontend (`npm ci && npm run build`).
-2. Publish the backend (`dotnet publish -c Release`) — or build a Docker image and push to GHCR (_to decide_).
-3. Copy artifacts and `database/migrations` to the VPS over SSH (key stored in GitHub secrets).
-4. Back up the production database (`pg_dump`).
-5. Run `flyway migrate` against production (Flyway CLI or the Flyway Docker image on the VPS; credentials from the `production` environment secrets).
-6. Restart the API service (systemd) and reload nginx if its config changed.
-7. Hit `/api/health` to confirm the deploy.
+1. Publish the backend (`dotnet publish -c Release`) — or build a Docker image and push to GHCR (_to decide_).
+2. Copy artifacts and `database/migrations` to the VPS over SSH (key stored in GitHub secrets).
+3. Back up the production database (`pg_dump`).
+4. Run `flyway migrate` against production (Flyway CLI or the Flyway Docker image on the VPS; credentials from the `production` environment secrets).
+5. Restart the API service (systemd) and reload nginx if its config changed.
+6. Hit `/api/health` to confirm the deploy.
+
+The frontend deploys separately to Cloudflare Pages, so the API must stay compatible with the previous frontend version during a release.
 
 Migrations run **before** the new API starts, so every migration must stay compatible with the currently running API version.
 
@@ -176,7 +179,8 @@ Migrations run **before** the new API starts, so every migration must stay compa
 ## 9. Server (VPS)
 
 - Linux (e.g. Ubuntu LTS).
-- nginx: serves the frontend build and reverse-proxies `/api/` to Kestrel on `localhost:5000`.
+- nginx: serves `api.example.com` and reverse-proxies `/api/` to Kestrel on `localhost:5000`. The frontend is not hosted here.
+- Behind the Cloudflare proxy with SSL mode **Full (strict)**; nginx should accept web traffic only from Cloudflare IP ranges.
 - API runs as a **systemd** service under a dedicated non-root user.
 - PostgreSQL installed locally, listening only on localhost.
 - Firewall (ufw): allow only 22, 80, 443.
@@ -196,7 +200,7 @@ Migrations run **before** the new API starts, so every migration must stay compa
 
 - Branches: `feature/...`, `fix/...`; PR into `main`.
 - Commit messages: short imperative summary (e.g. "Add session join endpoint").
-- Code style: `.editorconfig` for C#, ESLint + Prettier for TypeScript.
+- Code style: `.editorconfig` for C#, oxlint for TypeScript.
 - Every feature has tests at the level that makes sense (unit for logic, integration for API).
 
 ## 12. Open questions
