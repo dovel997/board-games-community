@@ -1,0 +1,14 @@
+# Local data and dumps
+data/
+*.bak
+*.dump
+*.sqlite
+*.db
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
