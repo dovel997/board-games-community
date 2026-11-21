@@ -15,7 +15,8 @@
 | Database | PostgreSQL | **Decided** |
 | Schema & migrations | Flyway, plain SQL files in `database/` | **Decided** |
 | Auth | Custom auth, **no ASP.NET Core Identity** | **Decided** |
-| Auth mechanism | ASP.NET Core cookie authentication handler (same origin behind nginx) | _Proposed_ |
+| Auth mechanism | JWT bearer tokens (`Microsoft.AspNetCore.Authentication.JwtBearer`) | **Decided** |
+| Token handling | Short-lived access token in memory + rotating refresh token in an HttpOnly cookie | _Proposed_ |
 | Password hashing | Argon2id (e.g. `Konscious.Security.Cryptography`) or BCrypt | _Proposed_ |
 | API docs | OpenAPI / Swagger (Swashbuckle) | _Proposed_ |
 | CI/CD | GitHub Actions | **Decided** |
@@ -45,7 +46,7 @@ Browser ──HTTPS──► nginx (VPS)
 ```
 
 - The frontend talks to the backend only through `/api/v1/...`.
-- Frontend and API are served from the **same origin**, so no CORS in production and cookie auth works without extra setup.
+- Frontend and API are served from the **same origin**, so no CORS is needed in production.
 - Only the backend connects to the database. PostgreSQL is never exposed to the internet.
 
 ## 4. Frontend
@@ -110,6 +111,7 @@ database/
 
 - **User** — email, email confirmed, password hash, role, display name, avatar, area, bio, created at, last login
 - **UserToken** — user, type (email confirmation / password reset), token hash, expires at, used at
+- **RefreshToken** — user, token hash, family id, expires at, revoked at, replaced by, created at, user agent / IP
 - **Game** — name, description, image, min/max players, play time, min age, categories
 - **CollectionItem** — user, game, status (owned / wishlist / want to play)
 - **Session** — host, title, date/time, location, max players, visibility
@@ -125,11 +127,15 @@ database/
 
 - Custom authentication (no ASP.NET Core Identity):
   - Passwords hashed with Argon2id or BCrypt; never stored or logged in plain text.
-  - Login issues an auth cookie via the built-in ASP.NET Core cookie authentication handler (`AddAuthentication().AddCookie()`), with user id and role as claims.
+  - Login returns a **JWT access token** (HS256 or RS256, ~15 min lifetime) with user id (`sub`) and role as claims. The API validates it with `AddAuthentication().AddJwtBearer()`.
+  - Login also issues a **refresh token** (random, ~14–30 days) in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie scoped to `/api/v1/auth`. Only its hash is stored in `refresh_tokens`.
+  - `POST /api/v1/auth/refresh` rotates the refresh token (old one revoked, new one issued). Reuse of a revoked token revokes the whole token family (theft detection).
+  - Logout revokes the refresh token and clears the cookie. Password change / reset revokes all of the user's refresh tokens.
+  - Signing key comes from configuration/secrets, never committed; issuer, audience and lifetime are validated.
   - Email confirmation and password reset use single-use, expiring random tokens; only a hash of the token is stored.
   - Generic error messages on login/reset so they don't reveal whether an email is registered.
   - Account lockout or increasing delay after repeated failed logins.
-- Auth cookie: `HttpOnly`, `Secure`, `SameSite=Lax`; antiforgery protection on state-changing requests.
+- Frontend keeps the access token **in memory only** (never `localStorage`/`sessionStorage`) and sends it as `Authorization: Bearer <token>`. On page load or a 401 it calls the refresh endpoint to get a new one.
 - Role-based authorization: Player, Moderator, Admin.
 - Rate limiting on login, registration and password reset (ASP.NET Core rate limiter).
 - HTTPS only; nginx redirects HTTP → HTTPS and sets security headers (HSTS, CSP, X-Content-Type-Options).

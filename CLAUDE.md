@@ -23,7 +23,7 @@ Keep both docs up to date when a change affects requirements or technical decisi
 
 - Frontend talks to the backend only via `/api/v1/...`. Never access the database from the frontend.
 - Only the backend connects to PostgreSQL.
-- Production: nginx on a VPS serves the frontend build and proxies `/api/` to Kestrel; same origin, cookie auth.
+- Production: nginx on a VPS serves the frontend build and proxies `/api/` to Kestrel; same origin, JWT auth (access token in memory, refresh token in an HttpOnly cookie).
 - The schema is owned by `database/`: changes only through Flyway SQL migrations (`database/migrations/V<n>__*.sql`). The backend uses EF Core for data access only — no EF migrations. Never edit a production schema by hand.
 - A schema change usually touches `database/` (migration) **and** `backend/` (EF mappings, DTOs) — do both in the same change.
 

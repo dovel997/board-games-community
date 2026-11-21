@@ -47,7 +47,7 @@ docker compose -f database/docker-compose.yml down -v                 # stop and
 - Timestamps as `timestamptz`, stored in UTC; `created_at` / `updated_at` with defaults.
 - Use `CHECK` constraints and `NOT NULL` to enforce rules in the database, not only in the API.
 - Enums as `text` + `CHECK` constraint (easier to migrate than Postgres enum types).
-- Auth is custom (no ASP.NET Core Identity): `users` stores email (unique, case-insensitive), password hash, role; `user_tokens` stores hashed email-confirmation / password-reset tokens with expiry. Never store plain-text passwords or tokens.
+- Auth is custom (no ASP.NET Core Identity): `users` stores email (unique, case-insensitive), password hash, role; `user_tokens` stores hashed email-confirmation / password-reset tokens with expiry; `refresh_tokens` stores hashed JWT refresh tokens (family id, expiry, revoked at, replaced by). Never store plain-text passwords or tokens.
 
 ## Rules
 

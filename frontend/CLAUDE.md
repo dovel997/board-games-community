@@ -39,7 +39,8 @@ src/
 - Function components and hooks only.
 - All backend calls go through `src/api/` — never call `fetch` directly in components.
 - API base path is relative (`/api/v1`) — never hardcode hosts; same origin in production, Vite proxy in dev.
-- Auth uses an HttpOnly cookie set by the backend: never store tokens in `localStorage`. Send `credentials: 'include'` and the antiforgery header on mutating requests.
+- Auth uses JWT: keep the access token **in memory only** (auth context/store) — never in `localStorage` or `sessionStorage`. The API client adds `Authorization: Bearer <token>`.
+- The refresh token is an HttpOnly cookie the frontend can't read. On app load and on a 401, call `POST /api/v1/auth/refresh` (with `credentials: 'include'`) once, then retry the request; if refresh fails, log the user out. Make sure parallel 401s share a single refresh call.
 - Keep API types in sync with the backend DTOs when contracts change.
 - Responsive (mobile first) and accessible: semantic HTML, labels, keyboard navigation.
 - UI text should be easy to move into translation files later — avoid scattering strings in logic.

@@ -6,7 +6,10 @@ See [../docs/technical.md](../docs/technical.md) for the full stack and architec
 
 - .NET 8, ASP.NET Core Web API (controllers), C#
 - Entity Framework Core 8 + Npgsql (PostgreSQL) — data access only; the schema is owned by Flyway in `../database/`
-- Custom authentication with the ASP.NET Core cookie authentication handler — **do not use ASP.NET Core Identity** (no `AddIdentity`, `UserManager`, `SignInManager`, `IdentityDbContext`)
+- Custom JWT authentication (`AddJwtBearer`) — **do not use ASP.NET Core Identity** (no `AddIdentity`, `UserManager`, `SignInManager`, `IdentityDbContext`)
+  - Short-lived access token (~15 min) returned in the login/refresh response body
+  - Rotating refresh token in an `HttpOnly`, `Secure`, `SameSite=Strict` cookie scoped to `/api/v1/auth`; only its hash is stored (`refresh_tokens` table); reuse of a revoked token revokes the whole family
+  - JWT signing key, issuer, audience and lifetimes come from configuration/secrets — never hardcoded
 - Passwords hashed with Argon2id or BCrypt in a dedicated password hasher service
 - Swagger / OpenAPI
 - xUnit for tests, Testcontainers for PostgreSQL integration tests
