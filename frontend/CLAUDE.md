@@ -10,7 +10,7 @@ See [../docs/technical.md](../docs/technical.md) for the full stack and architec
 - TanStack Query for server state (to add once the API exists)
 - oxlint for linting
 - Vitest + React Testing Library
-- Hosted on Cloudflare Pages — see [../docs/cloudflare-deployment.md](../docs/cloudflare-deployment.md)
+- Hosted on Cloudflare Workers (static assets, `wrangler.jsonc`) — see [../docs/cloudflare-deployment.md](../docs/cloudflare-deployment.md)
 
 ## Commands
 
@@ -45,7 +45,7 @@ src/
 - The refresh token is an HttpOnly cookie the frontend can't read. On app load and on a 401, call `POST /api/v1/auth/refresh` (with `credentials: 'include'`) once, then retry the request; if refresh fails, log the user out. Make sure parallel 401s share a single refresh call.
 - Keep API types in sync with the backend DTOs when contracts change.
 - Use Mantine components and theme tokens instead of custom CSS where possible.
-- Don't add a `404.html` to `public/` — Cloudflare Pages needs its absence for SPA routing. Response headers go in `public/_headers`.
+- SPA routing on Cloudflare comes from `"not_found_handling": "single-page-application"` in `wrangler.jsonc` — keep it. Response headers go in `public/_headers`.
 - Responsive (mobile first) and accessible: semantic HTML, labels, keyboard navigation.
 - UI text should be easy to move into translation files later — avoid scattering strings in logic.
 - Environment-specific values via `import.meta.env.VITE_*`; never put secrets in frontend env vars.

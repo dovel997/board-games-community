@@ -1,193 +1,167 @@
-# Frontend deployment — Cloudflare Pages via GitHub Actions
+# Frontend deployment — Cloudflare + GitHub (dashboard guide)
 
-This guide sets up hosting for the React frontend on **Cloudflare Pages** (free plan) and automatic deploys from **GitHub Actions**.
+The React frontend is hosted on **Cloudflare Workers** (free plan) and deployed automatically by **GitHub Actions**. Everything in this guide is done by clicking in the Cloudflare and GitHub websites — no commands needed.
 
-- Push to `main` touching `frontend/**` → deploys to **production**.
-- Pull request touching `frontend/**` → deploys a **preview** with its own URL.
-- The backend and database stay on the VPS (see [technical.md](technical.md)).
+**How it works:** you don't create the website in Cloudflare yourself. You give GitHub permission to deploy to your Cloudflare account, and the first time GitHub Actions runs, it creates the Worker **`board-games-community`** and uploads the site. After that, every merge to `main` updates it.
 
-The workflow is already in the repo: [`.github/workflows/frontend-deploy.yml`](../.github/workflows/frontend-deploy.yml).
+| Event | Result |
+|-------|--------|
+| Merge / push to `main` changing `frontend/**` | Deploys to **production** |
+| Pull request changing `frontend/**` | Checks lint, tests and build; tries a **preview** URL (beta) |
+| Pull request closed | The preview is deleted |
 
-> Cloudflare's dashboard changes from time to time. If a button name below doesn't match exactly, look for the closest equivalent — the steps stay the same.
-
----
-
-## Part 1 — Cloudflare setup
-
-### Step 1. Create a Cloudflare account
-
-1. Go to <https://dash.cloudflare.com/sign-up> and sign up (free plan).
-2. Verify your email address.
-
-### Step 2. Create the Pages project
-
-The project must exist before GitHub Actions can deploy to it. We use **Direct Upload**, because GitHub Actions builds the app and uploads the result (Cloudflare does not build it).
-
-**Option A — dashboard**
-
-1. In the dashboard, open **Workers & Pages** → **Create** → **Pages** tab.
-2. Choose **Use direct upload** (not "Connect to Git").
-3. Project name: `board-games-community`.
-   - This must match `CLOUDFLARE_PROJECT_NAME` in the workflow file. If you choose another name, change it there too.
-   - The name becomes your default URL: `https://board-games-community.pages.dev` (a suffix is added if the name is taken — use whatever Cloudflare shows).
-4. Upload anything to finish creating the project — e.g. run `npm run build` in `frontend/` and drag in the `dist` folder. GitHub Actions will replace it.
-
-**Option B — command line**
-
-```powershell
-cd frontend
-npx wrangler login
-npx wrangler pages project create board-games-community --production-branch main
-```
-
-### Step 3. Check the production branch
-
-1. Open **Workers & Pages** → `board-games-community` → **Settings**.
-2. Make sure the **production branch** is `main`.
-
-Deployments from `main` go to production; deployments from any other branch name become previews.
-
-### Step 4. Create an API token for GitHub Actions
-
-1. Click your profile icon (top right) → **My Profile** → **API Tokens** → **Create Token**.
-2. Choose **Create Custom Token** → **Get started**.
-3. Fill in:
-   - **Token name:** `github-actions-pages-deploy`
-   - **Permissions:** `Account` → `Cloudflare Pages` → `Edit`
-   - **Account Resources:** `Include` → your account
-   - Leave the other fields empty (optional: set a TTL so the token expires).
-4. **Continue to summary** → **Create Token**.
-5. **Copy the token now** — Cloudflare shows it only once.
-
-The token can only manage Pages in your account. Never commit it to the repo.
-
-### Step 5. Copy your Account ID
-
-1. Open **Workers & Pages** (or your account home page).
-2. Find **Account ID** in the right sidebar and copy it.
+> Cloudflare changes its dashboard often. Button names below come from Cloudflare's documentation (November 2026). If a label differs slightly on your screen, pick the closest match.
 
 ---
 
-## Part 2 — GitHub setup
+## Part 1 — Cloudflare
 
-### Step 6. Add the secrets to the repository
+### Step 1. Create an account
 
-1. On GitHub, open the repository → **Settings** → **Secrets and variables** → **Actions**.
-2. Under **Repository secrets**, click **New repository secret** and add:
+1. Go to <https://dash.cloudflare.com/sign-up>.
+2. Sign up, choose the **Free** plan, and verify your email.
 
-| Name | Value |
+### Step 2. Choose your workers.dev subdomain
+
+Your site's free address will be `board-games-community.<your-subdomain>.workers.dev`. The subdomain is set once per account.
+
+1. In the left sidebar, click **Workers & Pages**.
+2. Find **Your subdomain** (on the right side of the page).
+3. Click **Change**, type a name (e.g. your username), and save.
+   - If Cloudflare asks you to pick a subdomain the first time you open **Workers & Pages**, do it there — same thing.
+
+> **Do not** click **Create application** → **Upload your static files**. That's not needed — GitHub Actions creates the Worker. (If you already created one there, see [Clean-up](#clean-up-optional).)
+
+### Step 3. Create an API token for GitHub
+
+1. Click **Manage Account** in the left sidebar → **API Tokens**.
+   (Direct link: <https://dash.cloudflare.com/?to=/:account/api-tokens>)
+2. Click **Create Token**.
+3. In the list of templates, find **Edit Cloudflare Workers** and click **Use template** next to it.
+4. Give the token a name, e.g. `github-actions-frontend`.
+5. In the resources section:
+   - **Account** → select your account.
+   - **Zone** → **All zones** (or only your domain, once you have one).
+6. (Optional) Set an expiration date.
+7. Click **Continue to summary** → **Create Token**.
+8. **Copy the token now** and keep it somewhere safe for Step 5 — Cloudflare shows it only once.
+
+### Step 4. Copy your Account ID
+
+1. Click **Workers & Pages** in the left sidebar.
+2. In the **Account Details** section, click the copy button next to **Account ID**.
+
+(Alternative: press **Ctrl + K** anywhere in the dashboard and search for **Copy account ID**.)
+
+---
+
+## Part 2 — GitHub
+
+### Step 5. Add the two secrets
+
+1. Open the repository on github.com.
+2. Click **Settings** (top tab) → in the left menu **Secrets and variables** → **Actions**.
+3. Click **New repository secret**:
+   - **Name:** `CLOUDFLARE_API_TOKEN` · **Secret:** the token from Step 3 → **Add secret**.
+4. Click **New repository secret** again:
+   - **Name:** `CLOUDFLARE_ACCOUNT_ID` · **Secret:** the Account ID from Step 4 → **Add secret**.
+
+### Step 6. Check that Actions are allowed
+
+1. **Settings** → **Actions** → **General**.
+2. Under **Actions permissions**, make sure actions are allowed (**Allow all actions and reusable workflows** is simplest).
+3. Click **Save** if you changed anything.
+
+### Step 7. (Recommended) Protect `main`
+
+1. **Settings** → **Rules** → **Rulesets** → **New ruleset** → **New branch ruleset**.
+2. **Ruleset name:** `main`. **Enforcement status:** **Active**.
+3. **Target branches** → **Add target** → **Include default branch**.
+4. Tick **Require a pull request before merging**.
+5. Tick **Require status checks to pass** → **Add checks** → type `build-and-deploy` and select it (it appears after the workflow has run once).
+6. Click **Create**.
+
+---
+
+## Part 3 — First deploy
+
+### Step 8. Merge the frontend changes into `main`
+
+1. On GitHub, open the pull request with the frontend/deployment changes (or create one: **Pull requests** → **New pull request**).
+2. Wait for the **build-and-deploy** check to turn green. On this first PR, the preview step may show a warning — that's expected, the Worker doesn't exist yet.
+3. Click **Merge pull request** → **Confirm merge**.
+4. Click the **Actions** tab → open the newest **Frontend — build & deploy to Cloudflare Workers** run → wait for the green check.
+
+### Step 9. Check the site in Cloudflare
+
+1. In Cloudflare, click **Workers & Pages**. You now see **board-games-community** in the list.
+2. Click it. The page shows the site address: `https://board-games-community.<your-subdomain>.workers.dev`.
+3. Open the address, click through **Home / Games / Sessions / About**, and reload the page on **Games** — it should still load.
+
+From now on, every merge into `main` that changes `frontend/` updates the site automatically.
+
+> **About `board-games-community.pages.dev`:** that address belongs to a Cloudflare *Pages* project. If it isn't in your dashboard, it's someone else's site with the same name. Your site is the `workers.dev` address above (or your own domain, below).
+
+---
+
+## Part 4 — Your own domain (optional)
+
+### Step 10. Add the domain to Cloudflare
+
+1. In the left sidebar, click **Domains** → **Onboard a domain**.
+2. Enter your domain (e.g. `example.com`), keep the default DNS option, click **Continue**.
+3. Select the **Free** plan.
+4. Review the DNS records Cloudflare found. Add any missing ones (especially email records), then **Continue**.
+5. Cloudflare shows **two nameservers**. Log in to the company where you bought the domain (your registrar) and replace its nameservers with these two. If DNSSEC is on at the registrar, turn it off first.
+6. Back in Cloudflare, wait until the domain shows as **Active** (minutes to a few hours; Cloudflare emails you).
+
+### Step 11. Connect the domain to the site
+
+1. **Workers & Pages** → click **board-games-community**.
+2. **Settings** → **Domains & Routes** → **Add** → **Custom Domain**.
+3. Enter `example.com` → **Add Custom Domain**.
+4. Repeat for `www.example.com` if you want that too.
+
+Cloudflare creates the DNS record and the HTTPS certificate automatically. The domain must not already have a CNAME record with that name — delete it under **DNS** → **Records** first if it does.
+
+> If you want the custom domain in the repo too (recommended later), it can be added to `frontend/wrangler.jsonc` — otherwise it stays only in the dashboard, which is fine.
+
+### Step 12. Point the API subdomain at your VPS (when the backend is ready)
+
+1. Open your domain in Cloudflare → **DNS** → **Records** → **Add record**.
+2. **Type:** `A` · **Name:** `api` · **IPv4 address:** your VPS IP · **Proxy status:** **Proxied** (orange cloud) → **Save**.
+3. Open **SSL/TLS** → **Overview** → choose **Full (strict)**.
+   - The VPS then needs a valid certificate (Cloudflare Origin Certificate or Let's Encrypt) — this is covered in the backend deployment setup.
+
+---
+
+## Everyday use
+
+| Task | Where |
 |------|-------|
-| `CLOUDFLARE_API_TOKEN` | the token from Step 4 |
-| `CLOUDFLARE_ACCOUNT_ID` | the Account ID from Step 5 |
+| Deploy to production | GitHub: merge a PR into `main` |
+| See deploy progress / errors | GitHub: **Actions** tab → the latest run |
+| Redeploy without changes | GitHub: **Actions** → **Frontend — build & deploy to Cloudflare Workers** → **Run workflow** |
+| See all deployments | Cloudflare: **Workers & Pages** → **board-games-community** → **Deployments** |
+| Roll back | Cloudflare: **Deployments** → **⋯** next to an older version → **Rollback** |
+| Preview a pull request | GitHub: PR → **Checks** → **build-and-deploy** → **Summary** shows the preview URL (beta) |
 
-`GITHUB_TOKEN` is provided automatically — you don't add it.
-
-### Step 7. Check Actions permissions
-
-1. Repository → **Settings** → **Actions** → **General**.
-2. **Actions permissions:** allow actions (at least GitHub-owned actions and `cloudflare/wrangler-action`).
-3. The workflow sets its own `permissions` (`contents: read`, `deployments: write`), so the default workflow permissions can stay read-only.
-
-### Step 8. (Recommended) Protect `main`
-
-1. Repository → **Settings** → **Branches** (or **Rules** → **Rulesets**) → add a rule for `main`.
-2. Require a pull request before merging.
-3. Require status checks to pass → select **build-and-deploy**.
-
-This way nothing reaches production without passing lint, tests and the build.
-
----
-
-## Part 3 — How the workflow works
-
-File: [`.github/workflows/frontend-deploy.yml`](../.github/workflows/frontend-deploy.yml)
-
-| Trigger | What happens |
-|---------|--------------|
-| Push to `main` changing `frontend/**` | lint → test → build → deploy to **production** |
-| Pull request changing `frontend/**` | lint → test → build → deploy a **preview** (branch name as alias) |
-| Pull request from a fork | lint → test → build only (forks get no secrets) |
-| Manual (**Actions** tab → **Run workflow**) | same as a push on the selected branch |
-
-Steps inside the job:
-
-1. Check out the code.
-2. Set up Node 22 with npm cache.
-3. `npm ci` — clean install from `package-lock.json`.
-4. `npm run lint`, `npm test`, `npm run build` — any failure stops the deploy.
-5. `wrangler pages deploy dist --project-name=board-games-community --branch=<branch>` uploads `frontend/dist`.
-6. The deployment URL is written to the job summary. With `gitHubToken` set, the deployment also shows up under the repo's **Deployments** section.
-
-### Single-page app routing
-
-Cloudflare Pages serves `index.html` for any path that isn't a file, as long as there is **no `404.html`** in the build. That's what makes React Router URLs like `/games` work on reload. Don't add a `404.html` to `frontend/public`.
-
-### Headers
-
-[`frontend/public/_headers`](../frontend/public/_headers) is copied into the build and sets security headers plus long caching for `/assets/*`. Add a Content-Security-Policy there once the API domain is known.
-
----
-
-## Part 4 — First deploy
-
-1. Commit and push the workflow and the frontend to a branch, then open a pull request into `main`.
-2. Open the PR's **Checks** → **build-and-deploy**. When it's green, the job summary shows the preview URL, e.g. `https://<branch>.board-games-community.pages.dev`.
-3. Open the preview URL and click through the pages. Reload on `/games` to check routing.
-4. Merge the PR. The workflow runs again on `main` and deploys to production: `https://board-games-community.pages.dev`.
-5. In Cloudflare, **Workers & Pages** → `board-games-community` → **Deployments** lists every deploy.
-
----
-
-## Part 5 — Custom domain (optional)
-
-### Step 1. Move the domain's DNS to Cloudflare
-
-1. Dashboard → **Add a domain** → enter your domain → choose the **Free** plan.
-2. Cloudflare scans the existing DNS records — check they're all there (especially mail records).
-3. Cloudflare shows two **nameservers**. At your domain registrar, replace the existing nameservers with these.
-4. Wait until the domain shows **Active** (minutes to a few hours).
-
-### Step 2. Attach the domain to Pages
-
-1. **Workers & Pages** → `board-games-community` → **Custom domains** → **Set up a custom domain**.
-2. Enter `example.com` (and/or `www.example.com`).
-3. Cloudflare creates the DNS record and the HTTPS certificate automatically.
-
-### Step 3. Point the API subdomain at the VPS
-
-1. **DNS** → **Records** → **Add record**: type `A`, name `api`, IPv4 = your VPS IP.
-2. Proxy status: **Proxied** (orange cloud) hides the VPS IP and adds DDoS protection.
-3. **SSL/TLS** → **Overview** → set the mode to **Full (strict)** and install a certificate on the VPS (Cloudflare Origin Certificate or Let's Encrypt).
-
-### Step 4. Connect frontend and API
-
-- The backend must allow CORS from `https://example.com` with credentials.
-- The frontend needs the API URL at build time. When the API exists:
-  1. GitHub → **Settings** → **Secrets and variables** → **Actions** → **Variables** → add `VITE_API_URL` = `https://api.example.com`.
-  2. In the workflow's **Build** step, add `env: VITE_API_URL: ${{ vars.VITE_API_URL }}`.
-- Preview URLs (`*.pages.dev`) are a different site from your API, so the refresh-token cookie won't work there. Use previews for checking UI, or set up a staging API later.
-
----
-
-## Part 6 — Everyday use
-
-| Task | How |
-|------|-----|
-| Deploy to production | Merge a PR into `main` |
-| Preview a change | Open a PR — the URL is in the job summary |
-| Redeploy without changes | **Actions** → workflow → **Run workflow** |
-| Roll back | Cloudflare → project → **Deployments** → pick an older deployment → **Rollback to this deployment** |
-| Deploy manually from your PC | `cd frontend` → `npm run build` → `npx wrangler pages deploy dist --project-name=board-games-community` |
-
----
+Note: settings like SPA routing live in the repo (`frontend/wrangler.jsonc`), not in the dashboard. Each deploy re-applies them, so changes made to those settings in the dashboard can be overwritten.
 
 ## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| `Project not found` | Create the project first (Step 2) and check the name matches `CLOUDFLARE_PROJECT_NAME`. |
-| `Authentication error` / `10000` | Token is wrong or lacks **Cloudflare Pages: Edit**; check `CLOUDFLARE_ACCOUNT_ID`. |
-| Deploy step skipped on a PR | The PR comes from a fork — expected, forks don't get secrets. |
-| Workflow didn't run | It only runs when files in `frontend/` or the workflow file change. Use **Run workflow** to force it. |
-| Reload on `/games` gives 404 | A `404.html` ended up in `dist` — remove it. |
-| Production didn't update | Check the project's production branch is `main` (Step 3). |
+| Problem | What to do |
+|---------|------------|
+| Deploy fails with `Authentication error` | Recreate the token with the **Edit Cloudflare Workers** template (Step 3) and update `CLOUDFLARE_API_TOKEN` in GitHub (Step 5 — open the secret and click **Update**). Check `CLOUDFLARE_ACCOUNT_ID`. |
+| Deploy fails mentioning a **workers.dev subdomain** | Do Step 2. |
+| Workflow didn't start | It only runs when files in `frontend/` change. Use **Run workflow** (Actions tab). |
+| No **Run workflow** button | The workflow must be on `main` first — merge the PR (Step 8). |
+| Preview step shows a warning | Worker previews are in beta and need the Worker to exist. Production deploys aren't affected. |
+| Reloading a page like `/games` shows 404 | Tell a developer: `not_found_handling` in `frontend/wrangler.jsonc` must be `single-page-application`. |
+
+## Clean-up (optional)
+
+If you created a Worker earlier with **Create application** → **Upload your static files**:
+
+- Named **board-games-community** → leave it, the first GitHub deploy replaces its content.
+- Any other name → **Workers & Pages** → click it → **Settings** → scroll down → **Delete**.
