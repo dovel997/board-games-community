@@ -442,7 +442,7 @@ To copy the private key (Option B key shown — for Option A use your key's file
 Get-Content "$HOME\.ssh\board-games-deploy" -Raw | Set-Clipboard
 ```
 
-> Use the VPS IP for `VPS_HOST`, not `api.example.com` — once the API domain is proxied by Cloudflare, SSH can't go through it.
+> Use the VPS IP for `VPS_HOST`, not `api.board-games-community.com` — once the API domain is proxied by Cloudflare, SSH can't go through it.
 
 ### Step 11. Check Actions permissions
 
@@ -482,13 +482,17 @@ docker compose logs --tail 50 api
 
 ## Part 4 — Domain and HTTPS (Cloudflare)
 
-Do this once your domain is on Cloudflare (see [cloudflare-deployment.md](cloudflare-deployment.md), "Your own domain").
+The domain is **`board-games-community.com`** (on Cloudflare; the frontend already runs there). This part puts the API on **`api.board-games-community.com`** with HTTPS.
+
+Why it's needed: the frontend runs on HTTPS, and browsers block an HTTPS page from calling a plain-HTTP API ("mixed content"). The login refresh cookie also needs the frontend and API on the same site (`board-games-community.com` + `api.board-games-community.com`).
+
+Parts 1–3 must be done first (the API answers at `http://VPS_IP/api/health`).
 
 ### Step 14. DNS record and SSL mode
 
-In the Cloudflare dashboard, open your domain:
+In the Cloudflare dashboard, open **board-games-community.com**:
 
-1. **DNS** → **Records** → **Add record**: Type `A`, Name `api`, IPv4 address = VPS IP, Proxy status **Proxied** (orange cloud) → **Save**.
+1. **DNS** → **Records** → **Add record**: Type `A`, Name `api`, IPv4 address = your VPS IP, Proxy status **Proxied** (orange cloud) → **Save**. This creates `api.board-games-community.com`.
 2. **SSL/TLS** → **Overview** → set the encryption mode to **Full (strict)**.
 
 ### Step 15. Origin certificate on the VPS
@@ -497,7 +501,7 @@ A free certificate from Cloudflare that is trusted by Cloudflare's proxy (valid 
 
 1. Cloudflare → your domain → **SSL/TLS** → **Origin Server** → **Create Certificate**.
 2. Keep **Generate private key and CSR with Cloudflare**, key type **RSA** or **ECC**.
-3. Hostnames: `api.example.com` (your API hostname).
+3. Hostnames: replace the defaults with `api.board-games-community.com`.
 4. **Create**. Leave the page open — the private key is shown only once.
 
 **VPS**
@@ -515,9 +519,8 @@ sudo chmod 600 /etc/ssl/cloudflare/api.key
 scp backend/deploy/nginx/api.conf backend/deploy/scripts/cloudflare-ips.sh administrator@VPS_IP:/tmp/
 ```
 
-**VPS** — replace `api.example.com` with your API hostname:
+**VPS** (the file already contains `api.board-games-community.com`):
 ```bash
-sudo sed -i 's/api.example.com/api.YOURDOMAIN.com/g' /tmp/api.conf
 sudo mv /tmp/api.conf /etc/nginx/sites-available/board-games-api
 sudo nginx -t && sudo systemctl reload nginx
 ```
@@ -533,7 +536,7 @@ After this, `http://VPS_IP/...` no longer works from the internet (by design) �
 
 ### Step 17. Check
 
-Open `https://api.YOURDOMAIN.com/api/health` — same JSON as before, now over HTTPS.
+Open `https://api.board-games-community.com/api/health` — same JSON as before, now over HTTPS.
 
 The frontend will call this URL later (`VITE_API_URL`), and the API will need CORS for the frontend's domain — that's part of the real API work, not this setup.
 
@@ -569,7 +572,7 @@ cd /opt/board-games && docker compose up -d
 | Status | VPS: `cd /opt/board-games && docker compose ps` |
 | Logs | VPS: `cd /opt/board-games && docker compose logs -f api` |
 | Restart | VPS: `cd /opt/board-games && docker compose restart api` |
-| Which version runs | `https://api.YOURDOMAIN.com/api/health` → `version` |
+| Which version runs | `https://api.board-games-community.com/api/health` → `version` |
 
 ## Security checklist
 
