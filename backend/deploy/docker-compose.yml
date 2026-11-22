@@ -1,0 +1,21 @@
+# Production stack on the VPS. GitHub Actions copies this file to /opt/board-games/
+# and writes API_IMAGE (the image tag to run) into /opt/board-games/.env.
+name: board-games
+
+services:
+  api:
+    image: ${API_IMAGE:?API_IMAGE is not set - run a deploy from GitHub Actions}
+    restart: unless-stopped
+    # Bound to localhost only: reachable by nginx on the VPS, never directly from
+    # the internet. (Docker-published ports bypass ufw, so never use "5000:8080".)
+    ports:
+      - "127.0.0.1:5000:8080"
+    # App secrets (connection strings, JWT key, ...) live in this file on the VPS only.
+    env_file:
+      - path: api.env
+        required: false
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

@@ -14,7 +14,7 @@ Keep both docs up to date when a change affects requirements or technical decisi
 | Folder | What | Own instructions |
 |--------|------|------------------|
 | `frontend/` | React + TypeScript (Vite) | [frontend/CLAUDE.md](frontend/CLAUDE.md) |
-| `backend/` | ASP.NET Core 8 Web API (C#) | [backend/CLAUDE.md](backend/CLAUDE.md) |
+| `backend/` | ASP.NET Core 10 Web API (C#), Docker | [backend/CLAUDE.md](backend/CLAUDE.md) |
 | `database/` | PostgreSQL schema: Flyway SQL migrations, seed data, local setup, backup scripts | [database/CLAUDE.md](database/CLAUDE.md) |
 | `docs/` | Project documentation | — |
 | `.github/` | GitHub Actions workflows, Dependabot | — |

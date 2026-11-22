@@ -12,8 +12,8 @@
 | Frontend UI / routing | Mantine, React Router | **Decided** |
 | Frontend server state | TanStack Query | _Proposed_ |
 | Frontend hosting | Cloudflare Workers static assets (free), deployed by GitHub Actions | **Decided** |
-| Backend | ASP.NET Core 8 Web API (C#) | **Decided** |
-| Data access | Entity Framework Core 8 + Npgsql (queries only, no EF migrations) | _Proposed_ |
+| Backend | ASP.NET Core 10 Web API (C#, .NET 10) | **Decided** |
+| Data access | Entity Framework Core 10 + Npgsql (queries only, no EF migrations) | _Proposed_ |
 | Database | PostgreSQL | **Decided** |
 | Schema & migrations | Flyway, plain SQL files in `database/` | **Decided** |
 | Auth | Custom auth, **no ASP.NET Core Identity** | **Decided** |
@@ -22,7 +22,8 @@
 | Password hashing | Argon2id (e.g. `Konscious.Security.Cryptography`) or BCrypt | _Proposed_ |
 | API docs | OpenAPI / Swagger (Swashbuckle) | _Proposed_ |
 | CI/CD | GitHub Actions | **Decided** |
-| Container registry | GitHub Container Registry (GHCR) | _Proposed_ |
+| Container registry | GitHub Container Registry (GHCR) | **Decided** |
+| Backend hosting | Docker container (Compose) on the VPS, deployed by GitHub Actions over SSH | **Decided** |
 | Server | Linux VPS | **Decided** |
 | Web server / reverse proxy | nginx | **Decided** |
 | TLS | Let's Encrypt (certbot) | _Proposed_ |
@@ -32,9 +33,9 @@
 ```
 /
 ├── frontend/   React app (Vite)
-├── backend/    ASP.NET Core 8 solution (API, domain, tests)
+├── backend/    ASP.NET Core 10 solution (API, domain, tests), Dockerfile, deploy/ (compose, nginx, scripts)
 ├── database/   Flyway SQL migrations, schema snapshot, seed data, local Postgres, backup scripts
-├── docs/       features.md, technical.md, cloudflare-deployment.md
+├── docs/       features.md, technical.md, cloudflare-deployment.md, vps-backend-deployment.md
 └── .github/    GitHub Actions workflows, Dependabot, templates
 ```
 
@@ -42,7 +43,7 @@
 
 ```
 Browser ──► example.com      → Cloudflare Worker (static React build)
-        └─► api.example.com  → Cloudflare proxy → VPS: nginx → ASP.NET Core API (Kestrel, localhost:5000)
+        └─► api.example.com  → Cloudflare proxy → VPS: nginx → API container (127.0.0.1:5000)
                                                                 └── PostgreSQL (localhost:5432, not public)
 ```
 
@@ -62,7 +63,7 @@ Browser ──► example.com      → Cloudflare Worker (static React build)
 
 ## 5. Backend
 
-- .NET 8, ASP.NET Core Web API with controllers.
+- .NET 10, ASP.NET Core Web API with controllers. Runs in Docker in production (`backend/Dockerfile`).
 - Proposed solution structure:
   - `BoardGames.Api` — controllers, auth, startup, middleware
   - `BoardGames.Core` — domain entities, business logic, interfaces
@@ -151,18 +152,19 @@ database/
 | Workflow | Trigger | Does |
 |----------|---------|------|
 | `frontend-deploy.yml` | PR / push touching `frontend/**` | install, lint, test, build, deploy to Cloudflare Workers (preview on PRs, production on `main`) |
-| `backend-ci.yml` | PR / push touching `backend/**` | restore, build, test |
-| `database-ci.yml` | PR / push touching `database/**` | spin up Postgres service, `flyway migrate` + `validate` on an empty DB |
-| `deploy.yml` | push to `main` (or manual) | build backend, run migrations, deploy to VPS |
+| `backend-deploy.yml` | PR / push touching `backend/**` | test; on `main`: build Docker image → GHCR → deploy to VPS |
+| `database-ci.yml` | PR / push touching `database/**` | spin up Postgres service, `flyway migrate` + `validate` on an empty DB (_to add_) |
 
 ### Backend deployment flow
 
-1. Publish the backend (`dotnet publish -c Release`) — or build a Docker image and push to GHCR (_to decide_).
-2. Copy artifacts and `database/migrations` to the VPS over SSH (key stored in GitHub secrets).
-3. Back up the production database (`pg_dump`).
-4. Run `flyway migrate` against production (Flyway CLI or the Flyway Docker image on the VPS; credentials from the `production` environment secrets).
-5. Restart the API service (systemd) and reload nginx if its config changed.
-6. Hit `/api/health` to confirm the deploy.
+Setup guide: [vps-backend-deployment.md](vps-backend-deployment.md).
+
+1. `dotnet test` (also on PRs).
+2. Build the Docker image from `backend/Dockerfile` and push it to GHCR as `ghcr.io/<owner>/board-games-community-api:<git-sha>` (+ `latest`).
+3. SSH to the VPS as the `administrator` user (key + pinned host key from the `production` environment secrets); copy `backend/deploy/docker-compose.yml` and `deploy.sh` to `/opt/board-games/`.
+4. Log in to GHCR with the job's short-lived token, run `deploy.sh`: write the image tag to `.env`, `docker compose pull && up -d`, log out.
+5. `deploy.sh` polls `http://127.0.0.1:5000/api/health` until it reports the new git SHA; otherwise the job fails and prints the container logs.
+6. _To add with the database:_ back up (`pg_dump`) and run `flyway migrate` before step 4.
 
 The frontend deploys separately to Cloudflare Workers, so the API must stay compatible with the previous frontend version during a release.
 
@@ -179,13 +181,15 @@ Migrations run **before** the new API starts, so every migration must stay compa
 ## 9. Server (VPS)
 
 - Linux (e.g. Ubuntu LTS).
-- nginx: serves `api.example.com` and reverse-proxies `/api/` to Kestrel on `localhost:5000`. The frontend is not hosted here.
-- Behind the Cloudflare proxy with SSL mode **Full (strict)**; nginx should accept web traffic only from Cloudflare IP ranges.
-- API runs as a **systemd** service under a dedicated non-root user.
-- PostgreSQL installed locally, listening only on localhost.
-- Firewall (ufw): allow only 22, 80, 443.
+- nginx (on the host): serves `api.example.com` and reverse-proxies `/api/` to the API container on `127.0.0.1:5000`. The frontend is not hosted here. Configs in `backend/deploy/nginx/`.
+- Behind the Cloudflare proxy with SSL mode **Full (strict)** and a Cloudflare Origin Certificate; ufw allows 80/443 only from Cloudflare IP ranges (`backend/deploy/scripts/cloudflare-ips.sh`).
+- API runs as a **Docker container** (Docker Compose, project in `/opt/board-games`), image from GHCR, as a non-root user inside the container. Port published on `127.0.0.1` only — Docker-published ports bypass ufw.
+- App secrets in `/opt/board-games/api.env` on the VPS (loaded by Compose), never in the repo.
+- GitHub Actions deploys as the existing `administrator` user (member of the `docker` group), with a dedicated SSH key.
+- PostgreSQL: on the VPS, not exposed to the internet (_to decide: container in the same Compose project vs. host install_).
+- Firewall (ufw): SSH + 80/443 (Cloudflare only).
 - SSH: key-based only, password login disabled.
-- Logs: API logs to journald / files (Serilog), with rotation.
+- Logs: container logs via Docker's json-file driver with rotation (`docker compose logs api`).
 
 ## 10. Local development
 
@@ -205,7 +209,7 @@ Migrations run **before** the new API starts, so every migration must stay compa
 
 ## 12. Open questions
 
-- Deploy the backend as a plain `dotnet publish` + systemd, or as a Docker image from GHCR?
+- Run PostgreSQL as a container in the same Compose project, or installed on the VPS host?
 - Image/avatar storage: VPS disk or external object storage?
 - Email provider for confirmations and notifications.
 - Monitoring/alerting (uptime check, error tracking).

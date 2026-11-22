@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+tests/
+deploy/
+.vs/
+**/*.user
+**/appsettings.*.local.json
+.env
+.env.*
+Dockerfile
+.dockerignore
+CLAUDE.md
