@@ -16,9 +16,13 @@ on:
 permissions:
   contents: read
 
+# PR runs get their own group per PR (a new push cancels the old PR run).
+# Production deploys queue in their own group and are never cancelled.
+# Note: when a PR is merged, its "closed" event reports github.ref as main,
+# so the group must not be based on github.ref alone.
 concurrency:
-  group: frontend-${{ github.ref }}
-  cancel-in-progress: true
+  group: frontend-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('deploy-{0}', github.ref) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'closed' }}
 
 jobs:
   build-and-deploy:
