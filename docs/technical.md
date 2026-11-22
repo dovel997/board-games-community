@@ -11,7 +11,7 @@
 | Frontend language / build | TypeScript + Vite | **Decided** |
 | Frontend UI / routing | Mantine, React Router | **Decided** |
 | Frontend server state | TanStack Query | _Proposed_ |
-| Frontend hosting | Cloudflare Pages (free), deployed by GitHub Actions | **Decided** |
+| Frontend hosting | Cloudflare Workers static assets (free), deployed by GitHub Actions | **Decided** |
 | Backend | ASP.NET Core 8 Web API (C#) | **Decided** |
 | Data access | Entity Framework Core 8 + Npgsql (queries only, no EF migrations) | _Proposed_ |
 | Database | PostgreSQL | **Decided** |
@@ -41,7 +41,7 @@
 ## 3. Architecture
 
 ```
-Browser ──► example.com      → Cloudflare Pages (static React build)
+Browser ──► example.com      → Cloudflare Worker (static React build)
         └─► api.example.com  → Cloudflare proxy → VPS: nginx → ASP.NET Core API (Kestrel, localhost:5000)
                                                                 └── PostgreSQL (localhost:5432, not public)
 ```
@@ -58,7 +58,7 @@ Browser ──► example.com      → Cloudflare Pages (static React build)
 - In development, Vite proxies `/api` to the local backend.
 - UI: Mantine. Routing: React Router.
 - Lint: oxlint. Tests: Vitest + React Testing Library.
-- Production build is static files in `frontend/dist`, hosted on Cloudflare Pages — see [cloudflare-deployment.md](cloudflare-deployment.md).
+- Production build is static files in `frontend/dist`, hosted on Cloudflare Workers (static assets, config in `frontend/wrangler.jsonc`) — see [cloudflare-deployment.md](cloudflare-deployment.md).
 
 ## 5. Backend
 
@@ -150,7 +150,7 @@ database/
 
 | Workflow | Trigger | Does |
 |----------|---------|------|
-| `frontend-deploy.yml` | PR / push touching `frontend/**` | install, lint, test, build, deploy to Cloudflare Pages (preview on PRs, production on `main`) |
+| `frontend-deploy.yml` | PR / push touching `frontend/**` | install, lint, test, build, deploy to Cloudflare Workers (preview on PRs, production on `main`) |
 | `backend-ci.yml` | PR / push touching `backend/**` | restore, build, test |
 | `database-ci.yml` | PR / push touching `database/**` | spin up Postgres service, `flyway migrate` + `validate` on an empty DB |
 | `deploy.yml` | push to `main` (or manual) | build backend, run migrations, deploy to VPS |
@@ -164,7 +164,7 @@ database/
 5. Restart the API service (systemd) and reload nginx if its config changed.
 6. Hit `/api/health` to confirm the deploy.
 
-The frontend deploys separately to Cloudflare Pages, so the API must stay compatible with the previous frontend version during a release.
+The frontend deploys separately to Cloudflare Workers, so the API must stay compatible with the previous frontend version during a release.
 
 Migrations run **before** the new API starts, so every migration must stay compatible with the currently running API version.
 

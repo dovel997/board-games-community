@@ -1,4 +1,4 @@
-name: Frontend — build & deploy to Cloudflare Pages
+name: Frontend — build & deploy to Cloudflare Workers
 
 on:
   push:
@@ -7,6 +7,7 @@ on:
       - 'frontend/**'
       - '.github/workflows/frontend-deploy.yml'
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     paths:
       - 'frontend/**'
       - '.github/workflows/frontend-deploy.yml'
@@ -14,24 +15,23 @@ on:
 
 permissions:
   contents: read
-  deployments: write
 
 concurrency:
   group: frontend-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  CLOUDFLARE_PROJECT_NAME: board-games-community
-
 jobs:
   build-and-deploy:
+    # Skip when a PR is closed — the cleanup job below handles that.
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v4
         with:
@@ -51,19 +51,55 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Pull requests from forks don't get secrets, so they only build and test.
-      - name: Deploy to Cloudflare Pages
+      # main (or a manual run) → production
+      - name: Deploy to production
         id: deploy
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: cloudflare/wrangler-action@v3
+        if: github.event_name != 'pull_request'
+        uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           workingDirectory: frontend
-          # main → production; any other branch → preview URL
-          command: pages deploy dist --project-name=${{ env.CLOUDFLARE_PROJECT_NAME }} --branch=${{ github.head_ref || github.ref_name }}
+          command: deploy
 
-      - name: Show deployment URL
-        if: steps.deploy.outcome == 'success'
-        run: echo "Deployed to ${{ steps.deploy.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
+      # Pull request → preview URL. Forks get no secrets, so they only build and test.
+      # Worker Previews are in open beta and need the Worker to exist (after the first
+      # production deploy), so a failure here doesn't fail the check.
+      - name: Deploy preview
+        id: preview
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          command: preview --name pr-${{ github.event.pull_request.number }}
+
+      - name: Show deployment output
+        if: steps.deploy.outcome == 'success' || steps.preview.outcome == 'success'
+        env:
+          OUTPUT: ${{ steps.deploy.outputs.command-output || steps.preview.outputs.command-output }}
+        run: |
+          {
+            echo '### Cloudflare deployment'
+            echo '```'
+            echo "$OUTPUT"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  delete-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Delete PR preview
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: frontend
+          command: preview delete --name pr-${{ github.event.pull_request.number }} --skip-confirmation

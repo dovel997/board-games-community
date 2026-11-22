@@ -23,7 +23,7 @@ Keep both docs up to date when a change affects requirements or technical decisi
 
 - Frontend talks to the backend only via `/api/v1/...`. Never access the database from the frontend.
 - Only the backend connects to PostgreSQL.
-- Production: frontend on Cloudflare Pages (`example.com`); API and PostgreSQL on a VPS behind nginx (`api.example.com`). JWT auth (access token in memory, refresh token in an HttpOnly cookie); the API needs CORS for the frontend origin.
+- Production: frontend on Cloudflare Workers static assets (`example.com`); API and PostgreSQL on a VPS behind nginx (`api.example.com`). JWT auth (access token in memory, refresh token in an HttpOnly cookie); the API needs CORS for the frontend origin.
 - The schema is owned by `database/`: changes only through Flyway SQL migrations (`database/migrations/V<n>__*.sql`). The backend uses EF Core for data access only — no EF migrations. Never edit a production schema by hand.
 - A schema change usually touches `database/` (migration) **and** `backend/` (EF mappings, DTOs) — do both in the same change.
 
