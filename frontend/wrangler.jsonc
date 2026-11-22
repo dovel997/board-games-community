@@ -2,7 +2,7 @@
 // Docs: https://developers.cloudflare.com/workers/static-assets/
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
-  // Worker name — default URL: https://board-games-community.<your-subdomain>.workers.dev
+  // Worker name — also reachable at https://board-games-community.racicvladan97.workers.dev
   "name": "board-games-community",
   "compatibility_date": "2026-11-15",
   "assets": {
@@ -10,6 +10,11 @@
     // Unknown paths return index.html so React Router can handle them.
     "not_found_handling": "single-page-application"
   },
+  // Production domain. Kept here so every deploy keeps it attached to this Worker.
+  "routes": [
+    { "pattern": "board-games-community.com", "custom_domain": true }
+  ],
+  // workers.dev stays on: PR preview URLs are served from it.
   "workers_dev": true,
   "preview_urls": true
 }

@@ -104,12 +104,18 @@ From now on, every merge into `main` that changes `frontend/` updates the site a
 
 ---
 
-## Part 4 — Your own domain (optional)
+## Part 4 — Your own domain
+
+✅ **Done:** the site runs on **https://board-games-community.com**. The domain is in [`frontend/wrangler.jsonc`](../frontend/wrangler.jsonc) (`routes`), so every deploy keeps it attached. The `workers.dev` address keeps working too (PR previews use it).
+
+The steps below are for reference (e.g. adding `www` or redoing the setup).
 
 ### Step 10. Add the domain to Cloudflare
 
+Skip this if you bought the domain on Cloudflare — it's already there.
+
 1. In the left sidebar, click **Domains** → **Onboard a domain**.
-2. Enter your domain (e.g. `example.com`), keep the default DNS option, click **Continue**.
+2. Enter `board-games-community.com`, keep the default DNS option, click **Continue**.
 3. Select the **Free** plan.
 4. Review the DNS records Cloudflare found. Add any missing ones (especially email records), then **Continue**.
 5. Cloudflare shows **two nameservers**. Log in to the company where you bought the domain (your registrar) and replace its nameservers with these two. If DNSSEC is on at the registrar, turn it off first.
@@ -117,21 +123,21 @@ From now on, every merge into `main` that changes `frontend/` updates the site a
 
 ### Step 11. Connect the domain to the site
 
-1. **Workers & Pages** → click **board-games-community**.
-2. **Settings** → **Domains & Routes** → **Add** → **Custom Domain**.
-3. Enter `example.com` → **Add Custom Domain**.
-4. Repeat for `www.example.com` if you want that too.
+The domain is attached by the config in the repo, `frontend/wrangler.jsonc`:
 
-Cloudflare creates the DNS record and the HTTPS certificate automatically. The domain must not already have a CNAME record with that name — delete it under **DNS** → **Records** first if it does.
+```jsonc
+"routes": [
+  { "pattern": "board-games-community.com", "custom_domain": true }
+]
+```
 
-> If you want the custom domain in the repo too (recommended later), it can be added to `frontend/wrangler.jsonc` — otherwise it stays only in the dashboard, which is fine.
+On deploy, Cloudflare creates the DNS record and the HTTPS certificate automatically. The hostname must not already have a CNAME record — delete it under **DNS** → **Records** first if it does.
 
-### Step 12. Point the API subdomain at your VPS (when the backend is ready)
+**To add `www.board-games-community.com`:** add a second line to `routes` — `{ "pattern": "www.board-games-community.com", "custom_domain": true }` — and merge. (Or add it in the dashboard: **Workers & Pages** → **board-games-community** → **Settings** → **Domains & Routes** → **Add** → **Custom Domain** — but then also add it to `wrangler.jsonc`, so config and dashboard match.)
 
-1. Open your domain in Cloudflare → **DNS** → **Records** → **Add record**.
-2. **Type:** `A` · **Name:** `api` · **IPv4 address:** your VPS IP · **Proxy status:** **Proxied** (orange cloud) → **Save**.
-3. Open **SSL/TLS** → **Overview** → choose **Full (strict)**.
-   - The VPS then needs a valid certificate (Cloudflare Origin Certificate or Let's Encrypt) — this is covered in the backend deployment setup.
+### Step 12. Point the API subdomain at your VPS
+
+Covered in detail in [vps-backend-deployment.md](vps-backend-deployment.md), Part 4 (Steps 14–17): DNS record `api` → VPS IP (proxied), SSL mode **Full (strict)**, Origin Certificate on the VPS.
 
 ---
 

@@ -40,7 +40,7 @@ src/
 - TypeScript everywhere; no `any` unless unavoidable and commented.
 - Function components and hooks only.
 - All backend calls go through `src/api/` — never call `fetch` directly in components.
-- API base URL comes from `import.meta.env.VITE_API_URL` (e.g. `https://api.example.com` in production, empty in dev so the Vite proxy handles `/api`) — never hardcode hosts.
+- API base URL comes from `import.meta.env.VITE_API_URL` (e.g. `https://api.board-games-community.com` in production, empty in dev so the Vite proxy handles `/api`) — never hardcode hosts.
 - Auth uses JWT: keep the access token **in memory only** (auth context/store) — never in `localStorage` or `sessionStorage`. The API client adds `Authorization: Bearer <token>`.
 - The refresh token is an HttpOnly cookie the frontend can't read. On app load and on a 401, call `POST /api/v1/auth/refresh` (with `credentials: 'include'`) once, then retry the request; if refresh fails, log the user out. Make sure parallel 401s share a single refresh call.
 - Keep API types in sync with the backend DTOs when contracts change.

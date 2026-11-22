@@ -42,12 +42,12 @@
 ## 3. Architecture
 
 ```
-Browser ──► example.com      → Cloudflare Worker (static React build)
-        └─► api.example.com  → Cloudflare proxy → VPS: nginx → API container (127.0.0.1:5000)
-                                                                └── PostgreSQL (localhost:5432, not public)
+Browser ──► board-games-community.com      → Cloudflare Worker (static React build)
+        └─► api.board-games-community.com  → Cloudflare proxy → VPS: nginx → API container (127.0.0.1:5000)
+                                                                                └── PostgreSQL (not public)
 ```
 
-- The frontend talks to the backend only through `https://api.example.com/api/v1/...`.
+- The frontend talks to the backend only through `https://api.board-games-community.com/api/v1/...`.
 - Frontend and API are on different origins but the **same site**, so the API needs CORS for the frontend origin (with credentials), and the `SameSite=Strict` refresh cookie still works.
 - Only the backend connects to the database. PostgreSQL is never exposed to the internet.
 
@@ -181,7 +181,7 @@ Migrations run **before** the new API starts, so every migration must stay compa
 ## 9. Server (VPS)
 
 - Linux (e.g. Ubuntu LTS).
-- nginx (on the host): serves `api.example.com` and reverse-proxies `/api/` to the API container on `127.0.0.1:5000`. The frontend is not hosted here. Configs in `backend/deploy/nginx/`.
+- nginx (on the host): serves `api.board-games-community.com` and reverse-proxies `/api/` to the API container on `127.0.0.1:5000`. The frontend is not hosted here. Configs in `backend/deploy/nginx/`.
 - Behind the Cloudflare proxy with SSL mode **Full (strict)** and a Cloudflare Origin Certificate; ufw allows 80/443 only from Cloudflare IP ranges (`backend/deploy/scripts/cloudflare-ips.sh`).
 - API runs as a **Docker container** (Docker Compose, project in `/opt/board-games`), image from GHCR, as a non-root user inside the container. Port published on `127.0.0.1` only — Docker-published ports bypass ufw.
 - App secrets in `/opt/board-games/api.env` on the VPS (loaded by Compose), never in the repo.
